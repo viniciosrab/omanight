@@ -210,10 +210,6 @@ The integration tests don't touch your system:
 
 To run a single test, use `ONLY=<name> tests/run.sh`.
 
-## Credits
-
-Inspired by [key-tone/omarchy-nightlight](https://github.com/key-tone/omarchy-nightlight), [jeremylanger/omarchy-nightlight](https://github.com/jeremylanger/omarchy-nightlight), and [agkrishnendu/omarchy-nightlight](https://github.com/agkrishnendu/omarchy-nightlight) (MIT). This plugin was written from scratch.
-
 ## License
 
 MIT, see [LICENSE](LICENSE).
