@@ -17,7 +17,13 @@ The plugin replaces the stock `omarchy.nightlight` service (manifest `omarchy.cl
 ## Install
 
 ```bash
-# from a checkout of this repository:
+omarchy plugin add https://github.com/viniciosrab/omanight.git --enable
+omarchy restart shell
+```
+
+Or, for development, from a checkout of this repository:
+
+```bash
 ln -s "$PWD" ~/.config/omarchy/plugins/vinicios.nightlight
 
 omarchy plugin enable vinicios.nightlight
