@@ -205,7 +205,7 @@ Panel {
           iconComponent: Component {
             Text {
               text: "󰔎"
-              color: root.kelvinQt(root.currentTemp)
+              color: root.fg
               font.family: root.fontName
               font.pixelSize: Style.font.display
               opacity: root.service && root.service.enabled ? 1.0 : 0.55
