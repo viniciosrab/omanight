@@ -5,9 +5,11 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Popup for the night light: what the screen shows now, quick overrides,
-// the schedule editor, and a timeline of tonight. Everything is a thin
-// front end to Service.qml, which owns state and talks to hyprsunset.
+// Popup for the night light. Kept to what gets used day to day: what the
+// screen shows now, the switch, a slider, presets, and a way back to the
+// schedule. The schedule editor stays collapsed until asked for. Everything
+// is a thin front end to Service.qml, which owns state and talks to
+// hyprsunset; the rarer knobs (hold length, late-stage delay) are IPC only.
 Panel {
   id: root
   moduleName: "vinicios.nightlight"
@@ -17,43 +19,36 @@ Panel {
   property var anchorItem: null
   property var hostWidget: null
   readonly property var barIdentity: hostWidget || root
+  property alias surface: panel
 
   readonly property var service: bar && bar.shell ? bar.shell.serviceFor("vinicios.nightlight") : null
   readonly property var prefs: service ? service.prefs : Model.defaultState()
   readonly property int currentTemp: service ? service.displayTemperature : Model.DAY_TEMPERATURE
   readonly property bool overrideActive: service ? service.overrideActive : false
-  readonly property var plan: service ? Model.nightPlan(service.prefs, service.sun) : null
-  readonly property var events: service ? service.events : []
 
   readonly property color fg: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(fg, 1.4)
   readonly property string fontName: bar ? bar.fontFamily : Style.font.family
+
+  property bool scheduleExpanded: false
 
   // ---- Lifecycle -------------------------------------------------------------
 
   function open() {
     root.controller.show()
     if (service) service.tick()
-    Qt.callLater(function() { if (root.opened) setCenterHoverRevealSuppressed(true) })
   }
-  function close() {
-    root.controller.hide()
-    setCenterHoverRevealSuppressed(false)
-  }
+  function close() { root.controller.hide() }
   function toggle() { root.opened ? root.close() : root.open() }
   function switchPanel(direction) {
     if (root.bar && typeof root.bar.switchPanelFrom === "function")
       return root.bar.switchPanelFrom(root.barIdentity, direction)
     return false
   }
-  function setCenterHoverRevealSuppressed(value) {
-    if (root.bar && typeof root.bar.setCenterHoverRevealSuppressed === "function")
-      root.bar.setCenterHoverRevealSuppressed(value)
-  }
 
   onOpenedChanged: if (!opened) {
     cursorActive = false
-    setCenterHoverRevealSuppressed(false)
+    scheduleExpanded = false
   }
 
   IpcHandler {
@@ -73,36 +68,22 @@ Panel {
   }
   function miredColor(fromK, toK, t) { return kelvinQt(Model.miredMix(fromK, toK, t)) }
 
-  readonly property real nowOffset: plan && service ? wrap(Model.minuteOfDay(service.now) - plan.start) : 0
-  function wrap(m) { return ((m % 1440) + 1440) % 1440 }
-  function eventOffset(e) { return plan ? wrap(e.minute - plan.start) : 0 }
-  function activeIndex() {
-    if (!plan || events.length === 0) return -1
-    if (nowOffset >= plan.length) return events.length - 1
-    var active = 0
-    for (var i = 0; i < events.length; i++) if (eventOffset(events[i]) <= nowOffset) active = i
-    return active
-  }
-  function fadeProgress(e) {
-    if (!plan || overrideActive || e.fadeMinutes <= 0) return -1
-    var off = eventOffset(e)
-    if (nowOffset < off || nowOffset >= off + e.fadeMinutes) return -1
-    return (nowOffset - off) / e.fadeMinutes
-  }
-  function eventLabel(e) {
-    if (e.kind === "evening") return plan && plan.window.source === "sun" ? "Sunset" : "Evening"
-    if (e.kind === "late") return "Late"
-    return plan && plan.window.source === "sun" ? "Sunrise" : "Day"
+  readonly property string scheduleSummary: {
+    if (!service) return ""
+    var p = prefs
+    if (p.mode === "manual") return "Manual · " + p.manualTemperature + "K"
+    var w = Model.nightWindow(p, service.sun)
+    var times = w ? Model.formatHHMM(w.start) + " → " + Model.formatHHMM(w.end) : ""
+    var temps = p.lateAfterMinutes > 0 ? p.eveningTemperature + " / " + p.lateTemperature + "K" : p.eveningTemperature + "K"
+    return (p.mode === "sun" && w && w.source === "sun" ? "Sun" : "Fixed") + " · " + times + " · " + temps
   }
 
   readonly property string sunLine: {
     if (!service) return ""
-    var s = service.sun
-    var where = prefs.locationName || (service.hasLocation ? prefs.latitude.toFixed(2) + ", " + prefs.longitude.toFixed(2) : "")
-    if (!service.hasLocation) return "No location — set one in the Weather widget"
-    if (s.polar === "day") return "Polar day at " + where + " — using fixed times"
-    if (s.polar === "night") return "Polar night at " + where + " — using fixed times"
-    return "Sunset " + Model.formatHHMM(s.sunset) + " · Sunrise " + Model.formatHHMM(s.sunrise) + " · " + where
+    if (!service.hasLocation) return "No location — set one in the Weather widget. Using the times below."
+    var where = prefs.locationName || prefs.latitude.toFixed(2) + ", " + prefs.longitude.toFixed(2)
+    if (service.sun.polar) return "No sunset at " + where + " today. Using the times below."
+    return "Following sunset and sunrise at " + where + "."
   }
 
   // ---- Keyboard cursor -------------------------------------------------------
@@ -110,13 +91,16 @@ Panel {
   property bool cursorActive: false
   property string focusSection: "slider"
   property int selectedIndex: 0
-  readonly property var sections: overrideActive
-    ? ["switch", "slider", "presets", "hold", "resume", "mode"]
-    : ["switch", "slider", "presets", "hold", "mode"]
+  readonly property var sections: {
+    var out = ["switch", "slider", "presets"]
+    if (overrideActive) out.push("resume")
+    out.push("schedule")
+    if (scheduleExpanded) out.push("mode")
+    return out
+  }
 
   function sectionCount(section) {
     if (section === "presets") return Model.PRESETS.length
-    if (section === "hold") return Model.HOLDS.length
     if (section === "mode") return Model.MODES.length
     return 0
   }
@@ -128,8 +112,7 @@ Panel {
   function moveCursor(dx, dy) {
     if (dy !== 0) {
       var i = sections.indexOf(focusSection)
-      var next = Math.max(0, Math.min(sections.length - 1, (i < 0 ? 0 : i + dy)))
-      focusSection = sections[next]
+      focusSection = sections[Math.max(0, Math.min(sections.length - 1, (i < 0 ? 0 : i + dy)))]
       selectedIndex = 0
       return
     }
@@ -138,10 +121,10 @@ Panel {
     if (max >= 0) selectedIndex = Math.max(0, Math.min(max, selectedIndex + dx))
   }
   function activateCursor() {
+    if (focusSection === "schedule") { scheduleExpanded = !scheduleExpanded; return }
     if (!service) return
     if (focusSection === "switch") service.toggle()
     else if (focusSection === "presets") service.applyPreset(Model.PRESETS[selectedIndex].value)
-    else if (focusSection === "hold") service.setHold(Model.HOLDS[selectedIndex].value)
     else if (focusSection === "resume") service.resume()
     else if (focusSection === "mode") service.setMode(Model.MODES[selectedIndex])
   }
@@ -149,14 +132,12 @@ Panel {
 
   // ---- Pieces ----------------------------------------------------------------
 
-  // A strip painted in the colours the screen passes through, sampled in
-  // mireds like the fades themselves.
+  // The slider track, painted in the colours each temperature gives the
+  // screen, sampled in mireds so the middle of the bar looks like the middle.
   component KelvinBar: Rectangle {
     id: kbar
-    property int fromK: 6500
-    property int toK: 3400
-    property real marker: -1
-    height: Style.space(8)
+    property int fromK: 1000
+    property int toK: 6500
     radius: Style.cornerRadius > 0 ? height / 2 : 0
     border.width: 1
     border.color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.25)
@@ -167,14 +148,6 @@ Panel {
       GradientStop { position: 0.5; color: root.miredColor(kbar.fromK, kbar.toK, 0.5) }
       GradientStop { position: 0.75; color: root.miredColor(kbar.fromK, kbar.toK, 0.75) }
       GradientStop { position: 1.0; color: root.miredColor(kbar.fromK, kbar.toK, 1) }
-    }
-    Rectangle {
-      visible: kbar.marker >= 0
-      width: Style.space(3)
-      height: parent.height + Style.space(6)
-      anchors.verticalCenter: parent.verticalCenter
-      x: Math.max(0, Math.min(kbar.width - width, kbar.width * kbar.marker - width / 2))
-      color: root.fg
     }
   }
 
@@ -193,17 +166,15 @@ Panel {
     owner: root.barIdentity
     bar: root.bar
     open: root.opened
-    centerOnBar: true
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(420))
+    contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
       blocked: onField.activeFocus || offField.activeFocus || eveningField.field.activeFocus
-        || lateField.field.activeFocus || lateAfterField.field.activeFocus || fadeField.field.activeFocus
-        || manualField.field.activeFocus
+        || lateField.field.activeFocus || fadeField.field.activeFocus || manualField.field.activeFocus
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) { root.cursorActive = true; return }
         root.moveCursor(dx, dy)
@@ -212,6 +183,7 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
+        if (t === "s" || t === "S") { root.scheduleExpanded = !root.scheduleExpanded; return }
         if (!root.service) return
         if (t === "t" || t === "T") root.service.toggle()
         else if (t === "r" || t === "R") root.service.resume()
@@ -226,9 +198,8 @@ Panel {
 
         PanelHero {
           width: parent.width
-          title: root.service ? root.service.warmthLabel : "Night Light"
+          title: root.service ? root.service.warmthLabel + " · " + root.currentTemp + "K" : "Night Light"
           meta: root.service ? root.service.statusText : "Service not running"
-          detail: root.currentTemp + "K"
           foreground: root.fg
           fontFamily: root.fontName
           iconComponent: Component {
@@ -275,121 +246,100 @@ Panel {
           }
         }
 
-        PanelSeparator { foreground: root.fg }
-
-        // ---- Temperature ----
-        Column {
+        CursorSurface {
           width: parent.width
-          spacing: Style.space(8)
+          height: slider.implicitHeight + Style.spacing.controlGap
+          hasCursor: root.cursorAt("slider")
+          foreground: root.fg
+          outline: true
 
-          Item {
-            width: parent.width
-            height: Style.space(18)
-            PanelSectionHeader {
-              text: root.overrideActive ? "OVERRIDE" : "TEMPERATURE"
-              foreground: root.fg
-              fontFamily: root.fontName
-              anchors.left: parent.left
-              anchors.verticalCenter: parent.verticalCenter
-            }
-            Caption {
-              text: root.service && root.service.target.source !== "override"
-                ? (root.service.target.source === "manual" ? "manual" : "scheduled") + " " + root.service.targetTemperature + "K"
-                : ""
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-            }
+          KelvinBar {
+            anchors.left: slider.left
+            anchors.right: slider.right
+            anchors.verticalCenter: slider.verticalCenter
+            height: slider.trackHeight
           }
 
-          CursorSurface {
-            width: parent.width
-            height: slider.implicitHeight + Style.spacing.controlGap
-            hasCursor: root.cursorAt("slider")
-            foreground: root.fg
-            outline: true
-
-            KelvinBar {
-              anchors.left: slider.left
-              anchors.right: slider.right
-              anchors.verticalCenter: slider.verticalCenter
-              height: slider.trackHeight
-              fromK: Model.MIN_TEMPERATURE
-              toK: Model.MAX_TEMPERATURE
-            }
-
-            PanelSlider {
-              id: slider
-              bar: root.bar
-              anchors.fill: parent
-              anchors.leftMargin: Style.space(6)
-              anchors.rightMargin: Style.space(6)
-              minimum: Model.MIN_TEMPERATURE
-              maximum: Model.MAX_TEMPERATURE
-              step: 50
-              integer: true
-              value: root.currentTemp
-              trackColor: "transparent"
-              fillColor: "transparent"
-              onMoved: function(v) { if (root.service) root.service.setTemperature(v) }
-              onReleased: function(v) { if (root.service) root.service.setTemperature(v) }
-            }
-
-            HoverHandler { onHoveredChanged: if (hovered) root.hoverTo("slider", 0) }
+          PanelSlider {
+            id: slider
+            bar: root.bar
+            anchors.fill: parent
+            anchors.leftMargin: Style.space(6)
+            anchors.rightMargin: Style.space(6)
+            minimum: Model.MIN_TEMPERATURE
+            maximum: Model.MAX_TEMPERATURE
+            step: 50
+            integer: true
+            value: root.currentTemp
+            trackColor: "transparent"
+            fillColor: "transparent"
+            onMoved: function(v) { if (root.service) root.service.setTemperature(v) }
+            onReleased: function(v) { if (root.service) root.service.setTemperature(v) }
           }
 
-          ButtonGroup {
-            width: parent.width
-            options: Model.PRESETS
-            value: Model.presetForTemperature(root.currentTemp)
-            foreground: root.fg
-            fontFamily: root.fontName
-            focusable: false
-            cursorIndex: root.cursorAt("presets") ? root.selectedIndex : -1
-            onHovered: function(index, on) { if (on) root.hoverTo("presets", index) }
-            onChanged: function(value) { if (root.service) root.service.applyPreset(value) }
-          }
+          HoverHandler { onHoveredChanged: if (hovered) root.hoverTo("slider", 0) }
         }
 
-        // ---- How long overrides last ----
-        Column {
+        ButtonGroup {
           width: parent.width
-          spacing: Style.space(8)
+          options: Model.PRESETS
+          value: Model.presetForTemperature(root.currentTemp)
+          foreground: root.fg
+          fontFamily: root.fontName
+          focusable: false
+          cursorIndex: root.cursorAt("presets") ? root.selectedIndex : -1
+          onHovered: function(index, on) { if (on) root.hoverTo("presets", index) }
+          onChanged: function(value) { if (root.service) root.service.applyPreset(value) }
+        }
 
-          PanelSectionHeader { text: "HOLD OVERRIDES UNTIL"; foreground: root.fg; fontFamily: root.fontName }
-
-          ButtonGroup {
-            width: parent.width
-            options: Model.HOLDS
-            value: root.overrideActive && root.prefs.override ? root.prefs.override.hold : root.prefs.defaultHold
-            foreground: root.fg
-            fontFamily: root.fontName
-            focusable: false
-            cursorIndex: root.cursorAt("hold") ? root.selectedIndex : -1
-            onHovered: function(index, on) { if (on) root.hoverTo("hold", index) }
-            onChanged: function(value) { if (root.service) root.service.setHold(value) }
-          }
-
-          Button {
-            width: parent.width
-            visible: root.overrideActive
-            text: "Resume schedule"
-            bordered: true
-            foreground: root.fg
-            fontFamily: root.fontName
-            hasCursor: root.cursorAt("resume")
-            onHovered: function(on) { if (on) root.hoverTo("resume", 0) }
-            onClicked: if (root.service) root.service.resume()
-          }
+        Button {
+          width: parent.width
+          visible: root.overrideActive
+          text: "Resume schedule"
+          bordered: true
+          foreground: root.fg
+          fontFamily: root.fontName
+          hasCursor: root.cursorAt("resume")
+          onHovered: function(on) { if (on) root.hoverTo("resume", 0) }
+          onClicked: if (root.service) root.service.resume()
         }
 
         PanelSeparator { foreground: root.fg }
 
-        // ---- Schedule ----
+        // ---- Schedule: one summary line until expanded ----
+        CursorSurface {
+          width: parent.width
+          height: Style.space(28)
+          hasCursor: root.cursorAt("schedule")
+          foreground: root.fg
+
+          PanelSectionHeader {
+            text: "SCHEDULE"
+            foreground: root.fg
+            fontFamily: root.fontName
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(6)
+            anchors.verticalCenter: parent.verticalCenter
+          }
+          Caption {
+            text: root.scheduleSummary + "  " + (root.scheduleExpanded ? "▾" : "▸")
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(6)
+            anchors.verticalCenter: parent.verticalCenter
+          }
+          MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onEntered: root.hoverTo("schedule", 0)
+            onClicked: root.scheduleExpanded = !root.scheduleExpanded
+          }
+        }
+
         Column {
           width: parent.width
           spacing: Style.space(10)
-
-          PanelSectionHeader { text: "SCHEDULE"; foreground: root.fg; fontFamily: root.fontName }
+          visible: root.scheduleExpanded
 
           ButtonGroup {
             width: parent.width
@@ -414,21 +364,21 @@ Panel {
             wrapMode: Text.Wrap
           }
 
-          // Fixed times; also the fallback for sun mode without sun times.
+          // Fixed times; in sun mode they only apply without a sunset.
           Row {
             width: parent.width
             spacing: Style.space(12)
-            visible: root.prefs.mode !== "manual"
+            visible: root.prefs.mode === "fixed" || (root.prefs.mode === "sun" && root.service !== null
+              && (!root.service.hasLocation || !!root.service.sun.polar))
 
             Column {
               width: (parent.width - parent.spacing) / 2
               spacing: Style.space(4)
-              Caption { text: root.prefs.mode === "sun" ? "Fallback on" : "Turns on" }
+              Caption { text: "Turns on" }
               TextField {
                 id: onField
                 width: parent.width
                 text: root.prefs.onTime
-                placeholderText: "20:00"
                 inputMask: "99:99"
                 foreground: root.fg
                 font.family: root.fontName
@@ -441,12 +391,11 @@ Panel {
             Column {
               width: (parent.width - parent.spacing) / 2
               spacing: Style.space(4)
-              Caption { text: root.prefs.mode === "sun" ? "Fallback off" : "Turns off" }
+              Caption { text: "Turns off" }
               TextField {
                 id: offField
                 width: parent.width
                 text: root.prefs.offTime
-                placeholderText: "07:00"
                 inputMask: "99:99"
                 foreground: root.fg
                 font.family: root.fontName
@@ -460,14 +409,14 @@ Panel {
 
           Grid {
             width: parent.width
-            columns: 2
-            columnSpacing: Style.space(12)
-            rowSpacing: Style.space(8)
+            columns: 3
+            columnSpacing: Style.space(10)
             visible: root.prefs.mode !== "manual"
 
             NumberField {
               id: eveningField
-              label: "Evening (K)"
+              label: "Night (K)"
+              fieldWidth: (parent.width - 2 * parent.columnSpacing) / 3
               from: Model.MIN_TEMPERATURE; to: Model.MAX_TEMPERATURE; stepSize: 100
               value: root.prefs.eveningTemperature
               foreground: root.fg; fontFamily: root.fontName
@@ -476,22 +425,16 @@ Panel {
             NumberField {
               id: lateField
               label: "Late (K)"
+              fieldWidth: (parent.width - 2 * parent.columnSpacing) / 3
               from: Model.MIN_TEMPERATURE; to: Model.MAX_TEMPERATURE; stepSize: 100
               value: root.prefs.lateTemperature
               foreground: root.fg; fontFamily: root.fontName
               onModified: function(v) { if (root.service) root.service.setField("lateTemperature", v) }
             }
             NumberField {
-              id: lateAfterField
-              label: "Late after (min, 0 = off)"
-              from: 0; to: 720; stepSize: 15
-              value: root.prefs.lateAfterMinutes
-              foreground: root.fg; fontFamily: root.fontName
-              onModified: function(v) { if (root.service) root.service.setField("lateAfterMinutes", v) }
-            }
-            NumberField {
               id: fadeField
-              label: "Fade (min, 0 = snap)"
+              label: "Fade (min)"
+              fieldWidth: (parent.width - 2 * parent.columnSpacing) / 3
               from: 0; to: Model.MAX_FADE_MINUTES; stepSize: 5
               value: root.prefs.fadeMinutes
               foreground: root.fg; fontFamily: root.fontName
@@ -502,81 +445,11 @@ Panel {
           NumberField {
             id: manualField
             visible: root.prefs.mode === "manual"
-            label: "Manual temperature (K)"
+            label: "Temperature (K)"
             from: Model.MIN_TEMPERATURE; to: Model.MAX_TEMPERATURE; stepSize: 100
             value: root.prefs.manualTemperature
             foreground: root.fg; fontFamily: root.fontName
             onModified: function(v) { if (root.service) root.service.setField("manualTemperature", v) }
-          }
-        }
-
-        // ---- Tonight ----
-        Column {
-          width: parent.width
-          spacing: Style.space(6)
-          visible: root.events.length > 0
-
-          PanelSeparator { foreground: root.fg }
-          PanelSectionHeader { text: "TONIGHT"; foreground: root.fg; fontFamily: root.fontName }
-
-          Repeater {
-            model: root.events
-
-            Column {
-              id: eventRow
-              required property var modelData
-              required property int index
-              readonly property bool current: index === root.activeIndex() && !root.overrideActive
-              readonly property real progress: root.fadeProgress(modelData)
-              width: parent.width
-              spacing: Style.space(4)
-
-              Item {
-                width: parent.width
-                height: Style.space(18)
-
-                Rectangle {
-                  id: dot
-                  width: Style.space(6); height: width; radius: width / 2
-                  anchors.left: parent.left
-                  anchors.verticalCenter: parent.verticalCenter
-                  color: root.fg
-                  visible: eventRow.current
-                }
-                Text {
-                  anchors.left: parent.left
-                  anchors.leftMargin: Style.space(14)
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: Model.formatHHMM(eventRow.modelData.minute) + "   " + root.eventLabel(eventRow.modelData)
-                    + (eventRow.modelData.fadeMinutes > 0 ? "  ·  " + eventRow.modelData.fadeMinutes + " min fade" : "")
-                  color: eventRow.current ? root.fg : root.dim
-                  font.family: root.fontName
-                  font.pixelSize: Style.font.body
-                  font.bold: eventRow.current
-                }
-                Text {
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: eventRow.progress >= 0
-                    ? Model.miredMix(eventRow.modelData.fromTemperature, eventRow.modelData.temperature, eventRow.progress) + "K → " + eventRow.modelData.temperature + "K"
-                    : (eventRow.modelData.kind === "day" ? "Off" : eventRow.modelData.temperature + "K")
-                  color: eventRow.current ? root.fg : root.dim
-                  font.family: root.fontName
-                  font.pixelSize: Style.font.body
-                  font.bold: eventRow.current
-                }
-              }
-
-              KelvinBar {
-                visible: eventRow.modelData.fadeMinutes > 0
-                anchors.left: parent.left
-                anchors.leftMargin: Style.space(14)
-                width: parent.width - Style.space(14)
-                fromK: eventRow.modelData.fromTemperature
-                toK: eventRow.modelData.temperature
-                marker: eventRow.progress
-              }
-            }
           }
         }
       }

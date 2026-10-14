@@ -9,7 +9,7 @@ It combines:
 - **Gradual fades** interpolated in mireds, so every step looks the same size.
 - **Overrides that stick** until a hold you choose: the next change, morning, 1 hour, a clock time, or forever.
 - **Presets** (Day, Evening, Night, Candle) and a 1000–6500K slider.
-- **A panel** with a timeline of tonight's changes, the schedule editor, and a warning when hyprsunset stops responding.
+- **A compact panel** that opens under the moon: switch, slider, presets, resume, a collapsed schedule editor, and a warning when hyprsunset stops responding.
 - **Drift recovery**: when hyprsunset restarts or changes on its own, the plugin puts the scheduled temperature back.
 
 The plugin replaces the stock `omarchy.nightlight` service (manifest `omarchy.clonedFrom`). It keeps the stock IPC surface, so existing keybindings and indicators keep working. It sends temperatures with `hyprctl hyprsunset temperature` and **never rewrites `~/.config/hypr/hyprsunset.conf`**. If hyprsunset isn't running, the plugin starts it (through `uwsm-app` when that's available).
@@ -56,6 +56,7 @@ The moon is dimmed while the light is off. Its tooltip shows the current tempera
 | `Enter` / `Space` | Activate the item under the cursor |
 | `t` | Toggle the light |
 | `r` | Resume the schedule |
+| `s` | Expand or collapse the schedule editor |
 | `Tab` / `Shift+Tab` | Switch to the next/previous bar panel |
 | `Esc` | Close the panel |
 
@@ -63,11 +64,10 @@ The **Resume schedule** row only appears while an override is active.
 
 ### Panel sections
 
-- **Hero**: warmth name (Day, Neutral, Evening, Night, Tungsten, Candle, Ember), status line, current K, and a master switch.
-- **Temperature**: a slider painted in kelvin colors, plus preset buttons. Both create an override with the selected hold.
-- **Hold overrides until**: Next change / 1 hour / Morning. Changing it also re-times an active override.
-- **Schedule**: mode, on/off times (used as the fallback in sun mode), evening and late temperatures, late delay, fade length, and the manual temperature.
-- **Tonight**: each change with its time, its fade length, and a gradient bar. The current change is marked, and a fade in progress shows its live temperature.
+- **Header**: warmth name (Day, Neutral, Evening, Night, Tungsten, Candle, Ember) with the current K, the status line, and the on/off switch.
+- **Slider and presets**: a slider painted in kelvin colors and Day / Evening / Night / Candle. Both hold until the next scheduled change (change that with the `hold` IPC call).
+- **Resume schedule**: only while something overrides the schedule.
+- **Schedule**: one summary line (mode, night window, temperatures). Click it, or press `s`, to edit the mode, the on/off times (fixed mode, or sun mode without a sunset), the night and late temperatures, and the fade length. The late-stage delay is IPC only (`setLateAfter`).
 
 ## Settings
 
