@@ -1,0 +1,5 @@
+#!/bin/sh
+# Fake hyprsunset: boots at its identity temperature and stays up.
+echo 6500 >"${FAKE_HYPRSUNSET:?}/temperature"
+touch "$FAKE_HYPRSUNSET/running"
+echo start >>"$FAKE_HYPRSUNSET/starts"

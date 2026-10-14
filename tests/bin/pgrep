@@ -1,0 +1,3 @@
+#!/bin/sh
+# Only answers for hyprsunset, from the fake's state.
+[ "$2" = hyprsunset ] && [ -e "${FAKE_HYPRSUNSET:?}/running" ]

@@ -1,0 +1,3 @@
+#!/bin/sh
+# No network in tests.
+exit 7

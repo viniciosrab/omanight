@@ -44,9 +44,14 @@ function defaultState() {
     override: null,
     latitude: null,
     longitude: null,
-    locationName: ""
+    locationName: "",
+    // Where the coordinates came from: "weather", "geocode", or "manual".
+    // Manual coordinates are never replaced by the weather widget's.
+    locationSource: ""
   }
 }
+
+var LOCATION_SOURCES = ["weather", "geocode", "manual"]
 
 // ---- Small helpers -----------------------------------------------------
 
@@ -440,6 +445,7 @@ function parseState(raw) {
     state.longitude = Number(p.longitude)
   }
   if (typeof p.locationName === "string") state.locationName = p.locationName
+  if (LOCATION_SOURCES.indexOf(p.locationSource) !== -1) state.locationSource = p.locationSource
   return state
 }
 

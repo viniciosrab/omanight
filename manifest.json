@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "vinicios.nightlight",
+  "name": "Night Light",
+  "version": "1.0.0",
+  "author": "Vinicios",
+  "license": "MIT",
+  "description": "Sunset or fixed-time night light with two-stage warmth, perceptual fades, presets, and overrides that stick.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Night Light",
+    "description": "Screen warmth: schedule, presets, overrides, and a timeline of the night",
+    "category": "Display",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "hideWhenOff": false
+    },
+    "schema": [
+      {
+        "key": "hideWhenOff",
+        "type": "boolean",
+        "label": "Hide icon when off",
+        "description": "Show the moon only while the night light is on, or while the bar is hovered.",
+        "defaultValue": false
+      }
+    ]
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.nightlight"
+  }
+}

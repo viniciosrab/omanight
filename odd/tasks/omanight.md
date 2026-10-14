@@ -20,7 +20,7 @@ Plugin id `vinicios.nightlight`; replaces the built-in `omarchy.nightlight` serv
 
 ## Tasks
 
-- T1 S4-S8 Pure model `Model.js` + node tests — inline — commit: pending
+- T1 S4-S8 Pure model `Model.js` + node tests — inline — commit: 84fa6e5 (22 node tests green)
 - T2 S2-S4,S7 Service.qml (state, ticking, apply, IPC) + manifest — inline — commit: pending
 - T3 S9-S10 Panel.qml + BarWidget.qml — inline — commit: pending
 - T4 S11 Quickshell integration test + validate — inline — commit: pending

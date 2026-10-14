@@ -1,0 +1,14 @@
+#!/bin/sh
+# Stands in for `hyprctl hyprsunset ...` so tests never touch the display.
+# State lives under $FAKE_HYPRSUNSET: `running` while the fake hyprsunset is
+# up, `temperature` for what it holds, `calls` logs every set.
+state=${FAKE_HYPRSUNSET:?}
+[ "$1" = hyprsunset ] || exit 1
+[ -e "$state/running" ] || { echo "Couldn't connect to /run/user/1000/hypr/x/.hyprsunset.sock (3)"; exit 1; }
+case $2 in
+  temperature)
+    if [ -n "${3:-}" ]; then printf '%s\n' "$3" >"$state/temperature"; echo "$3" >>"$state/calls"; echo ok
+    else cat "$state/temperature"; fi ;;
+  identity) echo 6500 >"$state/temperature"; echo ok ;;
+  *) exit 1 ;;
+esac
