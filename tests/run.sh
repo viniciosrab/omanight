@@ -18,7 +18,7 @@ test_root=$(mktemp -d)
 trap 'rm -rf -- "$test_root"' EXIT
 
 failed=0
-for test in "$source_root"/tests/integration/*.qml; do
+for test in "$source_root"/tests/integration/${ONLY:-*}.qml; do
   name=$(basename -- "$test" .qml)
   work="$test_root/$name"
   mkdir -p "$work/app/plugin" "$work/app/host" "$work/fake" "$work/home/.local/state/omarchy/settings"
@@ -31,7 +31,7 @@ for test in "$source_root"/tests/integration/*.qml; do
     timeout 60s qs --no-color -p "$work/app" >"$work/output" 2>&1 || true
 
   if grep -q NIGHTLIGHT_PASS "$work/output" \
-    && ! grep -E '(plugin|shell)\.qml.*(ReferenceError|TypeError)|@plugin/.*(ReferenceError|TypeError)' "$work/output"; then
+    && ! grep -E 'ReferenceError|TypeError|Cannot assign|Unable to assign|is not a type|Cannot read property|Binding loop' "$work/output"; then
     grep -E 'ok  - ' "$work/output" | sed 's/.*ok  - /  ok  - /'
     echo "PASS $name"
   else

@@ -58,11 +58,24 @@ Item {
     tick()
   }
 
-  property string lastWritten: ""
+  // What we wrote lately. FileView loads asynchronously, so a reload can
+  // land after a newer write and hand back one of our older texts; those are
+  // never hand edits.
+  property var recentWrites: []
+  property real lastSaveAt: 0
 
   function save() {
-    lastWritten = Model.serializeState(prefs)
-    stateFile.setText(lastWritten)
+    var text = Model.serializeState(prefs)
+    recentWrites = recentWrites.concat([text]).slice(-8)
+    lastSaveAt = Date.now()
+    stateWriter.setText(text)
+  }
+
+  // A reload of the watched file is a hand edit only when it is not one of
+  // our own writes and does not trail one closely (the watcher can fire on
+  // the atomic rename and read a text we have since replaced).
+  function isOwnWrite(text) {
+    return saveTimer.running || Date.now() - lastSaveAt < 1500 || recentWrites.indexOf(text) !== -1
   }
 
   function loadState(raw) {
@@ -334,7 +347,8 @@ Item {
     onFileChanged: reload()
     onLoaded: {
       if (!root.stateLoaded) { root.loadState(text()); return }
-      // An edit made by hand; ours round-trip to the same prefs.
+      // Only an edit made by hand counts; see isOwnWrite().
+      if (root.isOwnWrite(text())) return
       var parsed = Model.parseState(text())
       if (JSON.stringify(parsed) !== JSON.stringify(root.prefs)) {
         root.prefs = parsed
@@ -343,6 +357,17 @@ Item {
       }
     }
     onLoadFailed: if (!root.stateLoaded) root.loadState("")
+  }
+
+  // Writes go through their own view so the watched one never mixes our
+  // in-memory text with what is on disk.
+  FileView {
+    id: stateWriter
+    path: root.statePath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    preload: false
   }
 
   FileView {

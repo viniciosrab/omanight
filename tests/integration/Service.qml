@@ -18,12 +18,17 @@ ShellRoot {
     return pad(d.getHours()) + ":" + pad(d.getMinutes())
   }
 
-  FileView { id: fakeTemp; path: harness.fake + "/temperature"; blockLoading: true; printErrors: false }
+  // Read with cat: FileView can miss a same-size rewrite within one second.
+  property string fakeTemperature: ""
+  Process {
+    id: fakeRead
+    command: ["cat", harness.fake + "/temperature"]
+    stdout: StdioCollector { onStreamFinished: harness.fakeTemperature = text.trim() }
+  }
   FileView { id: stateFile; path: harness.statePath; blockLoading: true; printErrors: false }
 
   function screen() {
-    fakeTemp.reload()
-    var t = parseInt(String(fakeTemp.text() || "").trim(), 10)
+    var t = parseInt(harness.fakeTemperature, 10)
     return isNaN(t) ? null : t
   }
   function saved() {
@@ -127,6 +132,7 @@ ShellRoot {
     id: poll
     interval: 100; repeat: true
     onTriggered: {
+      if (!fakeRead.running) fakeRead.running = true
       var step = harness.steps[harness.stepIndex]
       if (!harness.ran) { harness.ran = true; if (step.run) step.run() }
       harness.waited += interval
