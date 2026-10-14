@@ -21,13 +21,17 @@ Plugin id `vinicios.nightlight`; replaces the built-in `omarchy.nightlight` serv
 ## Tasks
 
 - T1 S4-S8 Pure model `Model.js` + node tests — inline — commit: 84fa6e5 (22 node tests green)
-- T2 S2-S4,S7 Service.qml (state, ticking, apply, IPC) + manifest — inline — commit: pending
-- T3 S9-S10 Panel.qml + BarWidget.qml — inline — commit: pending
-- T4 S11 Quickshell integration test + validate — inline — commit: pending
-- T5 S12 README + verify — inline — commit: pending
+- T2 S2-S4,S7 Service.qml (state, ticking, apply, IPC) + manifest — inline — commit: 312093a + fix 30bb4d3 (9 qs scenarios green)
+- T3 S9-S10 Panel.qml + BarWidget.qml — inline — commit: 3da08f9 (7 qs panel scenarios green)
+- T4 S11 Quickshell integration test + validate — inline — commit: 30bb4d3, 3da08f9 (tests/run.sh green 3x; omarchy plugin validate exit 0)
+- T5 S12 README + verify — worker mv7m2tyc-1-rygp — commit: a7dc7cb (verify pending)
 
 ## Log
 
 - L1 (user request, verbatim): "https://github.com/key-tone/omarchy-nightlight https://github.com/agkrishnendu/omarchy-nightlight https://github.com/jeremylanger/omarchy-nightlight Eu quero que você Dê uma Investigada pra gente pegar O melhor dos três Questão de recursos E etc, recursos Enfim, tudo que tiver de bom Pra gente compilar Em um plugin aqui nativo, né? Do Marche De night De night, né? Plugin de night, night e noite Aí você vai investigar Aqui os códigos, né? A base de código, esses três plugins Que são de night e noite Pra você ver O que tem de bom de cada um Pra gente ver, compilar Em um plugin pra nós aqui Fazer um plugin do zero Do nosso Marche, entendeu? Mas você não vai sair fazendo Você vai investigar E aí você vai retornar A sua conclusão, ok?"
 - L2 Investigation delivered; open decisions: replace native service, UI language, default mode, location fallback.
 - L3 (user, verbatim): "GO" — proceeding with the recommended answers: replace native service, English UI, `sun` default, weather.json + Open-Meteo geocode + manual lat/lon.
+- L4 (user, verbatim): "uma pergunta pq ate agora voce nao usou nenhum subagente do odd? e proposital?" — answered: implementation chain was sequential (Writer rule not met); the exploration skipped the mandatory evidence-budget delegation (routing defect acknowledged).
+- L5 (user, verbatim): "continue oque o ODD manda" — README delegated to gentle-ai-worker in background (disjoint surface README.md, LICENSE).
+- L6 Root cause of flaky Service test: an aborted debug run left an unguarded onLoaded in Service.qml; the watched FileView reloaded a superseded text and rolled back prefs. Fixed with a separate unwatched writer view + own-write guard (30bb4d3). Harness FileView reads of the fake missed same-size rewrites within a second; switched to cat.
+- L7 Risk: item 3 (replaces the `nightlight` IPC target and stock Indicators proxy contract) -> independent gentle-ai-verify.
