@@ -24,6 +24,8 @@ omarchy plugin enable vinicios.nightlight
 omarchy restart shell
 ```
 
+The shell's hot reload watches `~/.config/omarchy/plugins/` itself, so it does not see edits made through a symlinked checkout. After changing the code, run `omarchy restart shell`.
+
 The moon goes in the right section of the bar by default. To move it:
 
 ```bash
