@@ -21,6 +21,7 @@ The plugin replaces the stock `omarchy.nightlight` service (manifest `omarchy.cl
 ln -s "$PWD" ~/.config/omarchy/plugins/vinicios.nightlight
 
 omarchy plugin enable vinicios.nightlight
+omarchy restart shell
 ```
 
 The moon goes in the right section of the bar by default. To move it:
