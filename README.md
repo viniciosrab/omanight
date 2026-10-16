@@ -1,18 +1,8 @@
 # Night Light for Omarchy
 
-A night light plugin for the Omarchy shell (`vinicios.nightlight`) that drives hyprsunset live from a schedule you control.
+Warms your screen at night and brings it back in the morning, on its own. It follows sunset and sunrise where you live and changes the color gradually, so you barely notice.
 
-It combines:
-
-- **Three schedule modes**: `sun` (sunset to sunrise, worked out offline), `fixed` (on/off at HH:MM), and `manual` (one constant temperature).
-- **Two-stage night**: an evening temperature at night start and a warmer late temperature some minutes later.
-- **Gradual fades** interpolated in mireds, so every step looks the same size.
-- **Overrides that stick** until a hold you choose: the next change, morning, 1 hour, a clock time, or forever.
-- **Presets** (Day, Evening, Night, Candle) over IPC and a 1000–6500K slider.
-- **A minimal panel** that opens under the moon: the on/off switch, the kelvin slider, and a warning when hyprsunset stops responding. Presets, resume and the schedule settings are IPC only.
-- **Drift recovery**: when hyprsunset restarts or changes on its own, the plugin puts the scheduled temperature back.
-
-The plugin replaces the stock `omarchy.nightlight` service (manifest `omarchy.clonedFrom`). It keeps the stock IPC surface, so existing keybindings and indicators keep working. It sends temperatures with `hyprctl hyprsunset temperature` and **never rewrites `~/.config/hypr/hyprsunset.conf`**. If hyprsunset isn't running, the plugin starts it (through `uwsm-app` when that's available).
+It replaces Omarchy's built-in night light. Your existing keybindings and bar indicator keep working.
 
 ## Install
 
@@ -21,191 +11,69 @@ omarchy plugin add https://github.com/viniciosrab/omanight.git --enable
 omarchy restart shell
 ```
 
-Or, for development, from a checkout of this repository:
+A moon appears on the right side of the bar.
 
-```bash
-ln -s "$PWD" ~/.config/omarchy/plugins/vinicios.nightlight
+## How it works
 
-omarchy plugin enable vinicios.nightlight
-omarchy restart shell
-```
+Out of the box, every day:
 
-The shell's hot reload watches `~/.config/omarchy/plugins/` itself, so it does not see edits made through a symlinked checkout. After changing the code, run `omarchy restart shell`.
-
-The moon goes in the right section of the bar by default. To move it:
-
-```bash
-omarchy bar move vinicios.nightlight --section right
-```
-
-To check a checkout against the manifest schema:
-
-```bash
-omarchy plugin validate .
-```
-
-## Controls
-
-### Bar icon
-
-The moon is dimmed while the light is off. Its tooltip shows the current temperature and the status line.
-
-| Input | Action |
+| When | Screen |
 |---|---|
-| Left click | Open/close the panel |
-| Right click | Turn the light on/off until the next scheduled change |
-| Middle click | Resume the schedule (clears any override) |
+| Daytime | 6500K (normal) |
+| Sunset | Warms to 3400K over 45 minutes |
+| 3 hours after sunset | Warms further to 2700K |
+| Sunrise | Back to 6500K, finishing right at sunrise |
 
-### Panel keyboard
+Sunset and sunrise come from the location in Omarchy's Weather widget and are worked out on your computer, so the times shift with the seasons by themselves.
 
-| Key | Action |
+## Using it
+
+**The moon on the bar**
+
+| Click | Does |
 |---|---|
-| Arrow keys / `h` `j` `k` `l` | The first press shows the cursor. After that, up/down move between the switch and the slider. On the slider, left/right change the temperature by 100K. |
-| `Enter` / `Space` | Toggle the light when the cursor is on the switch |
-| `t` | Toggle the light |
-| `r` | Resume the schedule |
-| `Tab` / `Shift+Tab` | Switch to the next/previous bar panel |
-| `Esc` | Close the panel |
+| Left | Opens the panel |
+| Right | Turns the night light on or off |
+| Middle | Goes back to the automatic schedule |
 
-### Panel sections
+The moon is dimmed while the night light is off.
 
-- **Header**: warmth name (Day, Neutral, Evening, Night, Tungsten, Candle, Ember) with the current K, the status line, and the on/off switch.
-- **Slider**: painted in kelvin colors. A change holds until the next scheduled change (change that with the `hold` IPC call), then the schedule takes over again. Middle click on the moon, or `r`, resumes it sooner.
+**The panel** has an on/off switch and a slider from 1000K (warmest) to 6500K. Arrow keys work too, and `Esc` closes it.
 
-The schedule keeps running from the saved settings. Presets, the mode, the on/off times, the night and late temperatures, and the fade length are set over IPC.
+Anything you change by hand lasts until the next step of the schedule, then the automatic schedule takes over again. A middle click on the moon brings it back sooner.
 
-## Settings
+## Changing the schedule
 
-### Bar widget
+Run these in a terminal. Changes are saved and survive restarts.
 
-| Key | Default | Meaning |
-|---|---|---|
-| `hideWhenOff` | `false` | Show the moon only while the light is on, the panel is open, or the bar is hovered |
+| Command | Changes |
+|---|---|
+| `omarchy-shell nightlight setEvening 3400` | Temperature at sunset |
+| `omarchy-shell nightlight setLate 2700` | Temperature later in the night |
+| `omarchy-shell nightlight setLateAfter 180` | Minutes after sunset for the second step (`0` turns it off) |
+| `omarchy-shell nightlight setFade 45` | Minutes each change takes (`0` is instant) |
+| `omarchy-shell nightlight setMode fixed` | Use fixed times instead of the sun (`sun` to go back) |
+| `omarchy-shell nightlight setSchedule 21:00 06:30` | The fixed on and off times |
+| `omarchy-shell nightlight setLocation -23.55 -46.63` | Your location, if the Weather widget doesn't have it |
+| `omarchy-shell nightlight status` | Shows the current state and today's schedule |
+
+To show the moon only while the night light is on:
 
 ```bash
 omarchy bar set vinicios.nightlight hideWhenOff true
 ```
 
-### Schedule
-
-These fields are edited over IPC and stored in `omanight.json`.
-
-| Field | Default | Notes |
-|---|---|---|
-| `mode` | `sun` | `sun`, `fixed`, or `manual` |
-| `eveningTemperature` | `3400` | K at night start |
-| `lateTemperature` | `2700` | K for the late stage |
-| `lateAfterMinutes` | `180` | Minutes after night start; `0` disables the late stage |
-| `fadeMinutes` | `45` | `0` snaps; max `240` |
-| `onTime` / `offTime` | `20:00` / `07:00` | Fixed mode; also the fallback in sun mode with no location, or during polar day/night |
-| `manualTemperature` | `4000` | K in manual mode |
-| `defaultHold` | `next` | `next`, `1h`, or `morning` |
-
-Temperatures are clamped to 1000–6500K. The light counts as "on" below 6000K, the same threshold the stock service uses.
-
-How fades are timed:
-
-- The evening and late fades start at their event.
-- The morning fade ends at sunrise or the off time, so the screen is already neutral by then.
-- Fades are shortened when they would overlap.
-
-## IPC
-
-### Service: target `nightlight`
-
-| Call | Result |
-|---|---|
-| `status` | JSON: enabled, temperature, target, source, status, healthy, mode, override, sunrise, sunset, polar, location, schedule |
-| `refresh` | Re-read hyprsunset. An external change becomes an override (see below). |
-| `enable` / `disable` / `toggle` | Turn the light on/off until the next change. These print `enabled`/`disabled`. |
-| `setTemperature <kelvin>` | Override at a temperature with the default hold |
-| `preset <name>` | `day`, `evening`, `night`, `candle` (uses the default hold) |
-| `off <hold>` | Override to off until `hold` |
-| `hold <hold>` | Set the default hold and re-time an active override |
-| `resume` | Clear the override and return to the schedule |
-| `setMode <mode>` | `sun`, `fixed`, `manual` (also clears the override) |
-| `setSchedule <onTime> <offTime>` | Fixed/fallback times as `HH:MM` |
-| `setEvening <kelvin>` / `setLate <kelvin>` / `setManual <kelvin>` | Set the stage temperatures |
-| `setLateAfter <minutes>` / `setFade <minutes>` | Set the late delay and the fade length |
-| `setLocation <latitude> <longitude>` | Manual coordinates. The weather widget's location never replaces them. |
-| `useWeatherLocation` | Drop manual coordinates and follow `weather.json` again |
-
-**Hold syntax** for `off` and `hold`:
-
-| Hold | Ends at |
-|---|---|
-| `next` | The next scheduled change |
-| `morning` | The next night end |
-| `1h`, `30m`, any `<N>h` or `<N>m` | That long from now |
-| `HH:MM` | The next time the clock reads that time |
-| `forever` | When you resume |
-
-Only `next`, `1h`, and `morning` are saved as the default hold. Other values passed to `hold` just re-time the active override. Passing an empty hold to `off` uses the default hold.
-
-Overrides are saved with absolute deadlines, so they survive a shell restart. They're re-applied when hyprsunset drifts or restarts.
-
-```bash
-omarchy-shell nightlight status
-omarchy-shell nightlight preset candle
-omarchy-shell nightlight setTemperature 3000
-omarchy-shell nightlight off morning
-omarchy-shell nightlight hold 22:30
-omarchy-shell nightlight resume
-omarchy-shell nightlight setMode fixed
-omarchy-shell nightlight setSchedule 21:00 06:30
-omarchy-shell nightlight setLocation 52.52 13.40
-```
-
-`omarchy toggle nightlight` changes hyprsunset directly, then calls `nightlight refresh`. The plugin adopts the new temperature as an override until the next scheduled change instead of undoing it.
-
-The plugin also exposes `enabled` and `setNightlight(bool)` for the stock Indicators proxy.
-
-### Panel: target `vinicios.nightlight`
-
-`open`, `close`, `show`, `hide`, `toggle`
-
-```bash
-omarchy-shell vinicios.nightlight toggle
-```
-
-## Files
-
-| Path | Purpose |
-|---|---|
-| `~/.local/state/omarchy/settings/omanight.json` | Plugin state: schedule, override, location. Written atomically; hand edits are picked up. |
-| `~/.local/state/omarchy/settings/weather.json` | Read only, as the location source (the Weather widget's `latitude`/`longitude`/`name`) |
-
-Sun mode resolves the location in this order:
-
-1. Manual coordinates from `setLocation`.
-2. Coordinates in `weather.json`.
-3. If `weather.json` has only a place name, a single lookup against the Open-Meteo geocoding API.
-
-Sunrise and sunset are computed offline with the NOAA equations. Without a location, sun mode uses the fixed times.
-
 ## Uninstall
 
 ```bash
-omarchy plugin disable vinicios.nightlight   # the stock nightlight service comes back
-rm ~/.local/state/omarchy/settings/omanight.json   # optional: forget the plugin state
+omarchy plugin disable vinicios.nightlight
 ```
+
+Omarchy's built-in night light comes back. To also forget your settings, delete `~/.local/state/omarchy/settings/omanight.json`.
 
 ## Development
 
-```bash
-tests/run.sh        # node unit tests, then Quickshell integration tests
-node --test tests/  # unit tests only (pure model in Model.js)
-```
-
-`tests/run.sh` runs each `tests/integration/*.qml` in real Quickshell against the installed Omarchy UI modules. It needs a Wayland session.
-
-The integration tests don't touch your system:
-
-- `hyprctl`, `hyprsunset`, `pgrep`, `uwsm-app`, and `curl` are replaced by fakes in `tests/bin`.
-- `HOME` is a scratch directory.
-- The live display and the running shell are left alone.
-
-To run a single test, use `ONLY=<name> tests/run.sh`.
+Run `tests/run.sh` (needs a Wayland session). It uses fake `hyprctl`/`hyprsunset` and a scratch `HOME`, so it never touches your screen or settings.
 
 ## License
 
