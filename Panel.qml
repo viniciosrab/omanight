@@ -5,11 +5,11 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Popup for the night light. Kept to what gets used day to day: what the
-// screen shows now, the switch, a slider, presets, and a way back to the
-// schedule. The schedule editor stays collapsed until asked for. Everything
-// is a thin front end to Service.qml, which owns state and talks to
-// hyprsunset; the rarer knobs (hold length, late-stage delay) are IPC only.
+// Popup for the night light: what the screen shows now, the switch and a
+// kelvin slider. A thin front end to Service.qml, which owns state, runs the
+// schedule and talks to hyprsunset; presets, resume, the schedule and the
+// rarer knobs are IPC only. A slider change holds until the next scheduled
+// change, and a middle click on the moon resumes the schedule.
 Panel {
   id: root
   moduleName: "vinicios.nightlight"
@@ -22,15 +22,11 @@ Panel {
   property alias surface: panel
 
   readonly property var service: bar && bar.shell ? bar.shell.serviceFor("vinicios.nightlight") : null
-  readonly property var prefs: service ? service.prefs : Model.defaultState()
   readonly property int currentTemp: service ? service.displayTemperature : Model.DAY_TEMPERATURE
   readonly property bool overrideActive: service ? service.overrideActive : false
 
   readonly property color fg: bar ? bar.foreground : Color.foreground
-  readonly property color dim: Qt.darker(fg, 1.4)
   readonly property string fontName: bar ? bar.fontFamily : Style.font.family
-
-  property bool scheduleExpanded: false
 
   // ---- Lifecycle -------------------------------------------------------------
 
@@ -46,10 +42,7 @@ Panel {
     return false
   }
 
-  onOpenedChanged: if (!opened) {
-    cursorActive = false
-    scheduleExpanded = false
-  }
+  onOpenedChanged: if (!opened) cursorActive = false
 
   IpcHandler {
     target: "vinicios.nightlight"
@@ -68,42 +61,13 @@ Panel {
   }
   function miredColor(fromK, toK, t) { return kelvinQt(Model.miredMix(fromK, toK, t)) }
 
-  readonly property string scheduleSummary: {
-    if (!service) return ""
-    var p = prefs
-    if (p.mode === "manual") return "Manual · " + p.manualTemperature + "K"
-    var w = Model.nightWindow(p, service.sun)
-    var times = w ? Model.formatHHMM(w.start) + " → " + Model.formatHHMM(w.end) : ""
-    var temps = p.lateAfterMinutes > 0 ? p.eveningTemperature + " / " + p.lateTemperature + "K" : p.eveningTemperature + "K"
-    return (p.mode === "sun" && w && w.source === "sun" ? "Sun" : "Fixed") + " · " + times + " · " + temps
-  }
-
-  readonly property string sunLine: {
-    if (!service) return ""
-    if (!service.hasLocation) return "No location — set one in the Weather widget. Using the times below."
-    var where = prefs.locationName || prefs.latitude.toFixed(2) + ", " + prefs.longitude.toFixed(2)
-    if (service.sun.polar) return "No sunset at " + where + " today. Using the times below."
-    return "Following sunset and sunrise at " + where + "."
-  }
-
   // ---- Keyboard cursor -------------------------------------------------------
 
   property bool cursorActive: false
   property string focusSection: "slider"
   property int selectedIndex: 0
-  readonly property var sections: {
-    var out = ["switch", "slider", "presets"]
-    if (overrideActive) out.push("resume")
-    out.push("schedule")
-    if (scheduleExpanded) out.push("mode")
-    return out
-  }
+  readonly property var sections: ["switch", "slider"]
 
-  function sectionCount(section) {
-    if (section === "presets") return Model.PRESETS.length
-    if (section === "mode") return Model.MODES.length
-    return 0
-  }
   function hoverTo(section, index) {
     cursorActive = true
     focusSection = section
@@ -116,17 +80,10 @@ Panel {
       selectedIndex = 0
       return
     }
-    if (focusSection === "slider") { if (service) service.setTemperature(currentTemp + dx * 100); return }
-    var max = sectionCount(focusSection) - 1
-    if (max >= 0) selectedIndex = Math.max(0, Math.min(max, selectedIndex + dx))
+    if (focusSection === "slider" && service) service.setTemperature(currentTemp + dx * 100)
   }
   function activateCursor() {
-    if (focusSection === "schedule") { scheduleExpanded = !scheduleExpanded; return }
-    if (!service) return
-    if (focusSection === "switch") service.toggle()
-    else if (focusSection === "presets") service.applyPreset(Model.PRESETS[selectedIndex].value)
-    else if (focusSection === "resume") service.resume()
-    else if (focusSection === "mode") service.setMode(Model.MODES[selectedIndex])
+    if (focusSection === "switch" && service) service.toggle()
   }
   function cursorAt(section) { return cursorActive && focusSection === section }
 
@@ -151,13 +108,6 @@ Panel {
     }
   }
 
-  component Caption: Text {
-    color: root.dim
-    font.family: root.fontName
-    font.pixelSize: Style.font.caption
-    textFormat: Text.PlainText
-  }
-
   // ---- Surface ---------------------------------------------------------------
 
   KeyboardPanel {
@@ -173,8 +123,6 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      blocked: onField.activeFocus || offField.activeFocus || eveningField.field.activeFocus
-        || lateField.field.activeFocus || fadeField.field.activeFocus || manualField.field.activeFocus
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) { root.cursorActive = true; return }
         root.moveCursor(dx, dy)
@@ -183,7 +131,6 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
-        if (t === "s" || t === "S") { root.scheduleExpanded = !root.scheduleExpanded; return }
         if (!root.service) return
         if (t === "t" || t === "T") root.service.toggle()
         else if (t === "r" || t === "R") root.service.resume()
@@ -278,179 +225,6 @@ Panel {
           }
 
           HoverHandler { onHoveredChanged: if (hovered) root.hoverTo("slider", 0) }
-        }
-
-        ButtonGroup {
-          width: parent.width
-          options: Model.PRESETS
-          value: Model.presetForTemperature(root.currentTemp)
-          foreground: root.fg
-          fontFamily: root.fontName
-          focusable: false
-          cursorIndex: root.cursorAt("presets") ? root.selectedIndex : -1
-          onHovered: function(index, on) { if (on) root.hoverTo("presets", index) }
-          onChanged: function(value) { if (root.service) root.service.applyPreset(value) }
-        }
-
-        Button {
-          width: parent.width
-          visible: root.overrideActive
-          text: "Resume schedule"
-          bordered: true
-          foreground: root.fg
-          fontFamily: root.fontName
-          hasCursor: root.cursorAt("resume")
-          onHovered: function(on) { if (on) root.hoverTo("resume", 0) }
-          onClicked: if (root.service) root.service.resume()
-        }
-
-        PanelSeparator { foreground: root.fg }
-
-        // ---- Schedule: one summary line until expanded ----
-        CursorSurface {
-          width: parent.width
-          height: Style.space(28)
-          hasCursor: root.cursorAt("schedule")
-          foreground: root.fg
-
-          PanelSectionHeader {
-            text: "SCHEDULE"
-            foreground: root.fg
-            fontFamily: root.fontName
-            anchors.left: parent.left
-            anchors.leftMargin: Style.space(6)
-            anchors.verticalCenter: parent.verticalCenter
-          }
-          Caption {
-            text: root.scheduleSummary + "  " + (root.scheduleExpanded ? "▾" : "▸")
-            anchors.right: parent.right
-            anchors.rightMargin: Style.space(6)
-            anchors.verticalCenter: parent.verticalCenter
-          }
-          MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onEntered: root.hoverTo("schedule", 0)
-            onClicked: root.scheduleExpanded = !root.scheduleExpanded
-          }
-        }
-
-        Column {
-          width: parent.width
-          spacing: Style.space(10)
-          visible: root.scheduleExpanded
-
-          ButtonGroup {
-            width: parent.width
-            options: [
-              { value: "sun", label: "Sun" },
-              { value: "fixed", label: "Fixed times" },
-              { value: "manual", label: "Manual" }
-            ]
-            value: root.prefs.mode
-            foreground: root.fg
-            fontFamily: root.fontName
-            focusable: false
-            cursorIndex: root.cursorAt("mode") ? root.selectedIndex : -1
-            onHovered: function(index, on) { if (on) root.hoverTo("mode", index) }
-            onChanged: function(value) { if (root.service) root.service.setMode(value) }
-          }
-
-          Caption {
-            width: parent.width
-            visible: root.prefs.mode === "sun"
-            text: root.sunLine
-            wrapMode: Text.Wrap
-          }
-
-          // Fixed times; in sun mode they only apply without a sunset.
-          Row {
-            width: parent.width
-            spacing: Style.space(12)
-            visible: root.prefs.mode === "fixed" || (root.prefs.mode === "sun" && root.service !== null
-              && (!root.service.hasLocation || !!root.service.sun.polar))
-
-            Column {
-              width: (parent.width - parent.spacing) / 2
-              spacing: Style.space(4)
-              Caption { text: "Turns on" }
-              TextField {
-                id: onField
-                width: parent.width
-                text: root.prefs.onTime
-                inputMask: "99:99"
-                foreground: root.fg
-                font.family: root.fontName
-                onEditingFinished: {
-                  if (root.service) root.service.setSchedule(text, root.prefs.offTime)
-                  text = Qt.binding(function() { return root.prefs.onTime })
-                }
-              }
-            }
-            Column {
-              width: (parent.width - parent.spacing) / 2
-              spacing: Style.space(4)
-              Caption { text: "Turns off" }
-              TextField {
-                id: offField
-                width: parent.width
-                text: root.prefs.offTime
-                inputMask: "99:99"
-                foreground: root.fg
-                font.family: root.fontName
-                onEditingFinished: {
-                  if (root.service) root.service.setSchedule(root.prefs.onTime, text)
-                  text = Qt.binding(function() { return root.prefs.offTime })
-                }
-              }
-            }
-          }
-
-          Grid {
-            width: parent.width
-            columns: 3
-            columnSpacing: Style.space(10)
-            visible: root.prefs.mode !== "manual"
-
-            NumberField {
-              id: eveningField
-              label: "Night (K)"
-              fieldWidth: (parent.width - 2 * parent.columnSpacing) / 3
-              from: Model.MIN_TEMPERATURE; to: Model.MAX_TEMPERATURE; stepSize: 100
-              value: root.prefs.eveningTemperature
-              foreground: root.fg; fontFamily: root.fontName
-              onModified: function(v) { if (root.service) root.service.setField("eveningTemperature", v) }
-            }
-            NumberField {
-              id: lateField
-              label: "Late (K)"
-              fieldWidth: (parent.width - 2 * parent.columnSpacing) / 3
-              from: Model.MIN_TEMPERATURE; to: Model.MAX_TEMPERATURE; stepSize: 100
-              value: root.prefs.lateTemperature
-              foreground: root.fg; fontFamily: root.fontName
-              onModified: function(v) { if (root.service) root.service.setField("lateTemperature", v) }
-            }
-            NumberField {
-              id: fadeField
-              label: "Fade (min)"
-              fieldWidth: (parent.width - 2 * parent.columnSpacing) / 3
-              from: 0; to: Model.MAX_FADE_MINUTES; stepSize: 5
-              value: root.prefs.fadeMinutes
-              foreground: root.fg; fontFamily: root.fontName
-              onModified: function(v) { if (root.service) root.service.setField("fadeMinutes", v) }
-            }
-          }
-
-          NumberField {
-            id: manualField
-            visible: root.prefs.mode === "manual"
-            label: "Temperature (K)"
-            from: Model.MIN_TEMPERATURE; to: Model.MAX_TEMPERATURE; stepSize: 100
-            value: root.prefs.manualTemperature
-            foreground: root.fg; fontFamily: root.fontName
-            onModified: function(v) { if (root.service) root.service.setField("manualTemperature", v) }
-          }
         }
       }
     }

@@ -8,8 +8,8 @@ It combines:
 - **Two-stage night**: an evening temperature at night start and a warmer late temperature some minutes later.
 - **Gradual fades** interpolated in mireds, so every step looks the same size.
 - **Overrides that stick** until a hold you choose: the next change, morning, 1 hour, a clock time, or forever.
-- **Presets** (Day, Evening, Night, Candle) and a 1000–6500K slider.
-- **A compact panel** that opens under the moon: switch, slider, presets, resume, a collapsed schedule editor, and a warning when hyprsunset stops responding.
+- **Presets** (Day, Evening, Night, Candle) over IPC and a 1000–6500K slider.
+- **A minimal panel** that opens under the moon: the on/off switch, the kelvin slider, and a warning when hyprsunset stops responding. Presets, resume and the schedule settings are IPC only.
 - **Drift recovery**: when hyprsunset restarts or changes on its own, the plugin puts the scheduled temperature back.
 
 The plugin replaces the stock `omarchy.nightlight` service (manifest `omarchy.clonedFrom`). It keeps the stock IPC surface, so existing keybindings and indicators keep working. It sends temperatures with `hyprctl hyprsunset temperature` and **never rewrites `~/.config/hypr/hyprsunset.conf`**. If hyprsunset isn't running, the plugin starts it (through `uwsm-app` when that's available).
@@ -60,22 +60,19 @@ The moon is dimmed while the light is off. Its tooltip shows the current tempera
 
 | Key | Action |
 |---|---|
-| Arrow keys / `h` `j` `k` `l` | The first press shows the cursor. After that, up/down move between rows (switch, slider, presets, hold, resume, mode) and left/right pick an item. On the slider, left/right change the temperature by 100K. |
-| `Enter` / `Space` | Activate the item under the cursor |
+| Arrow keys / `h` `j` `k` `l` | The first press shows the cursor. After that, up/down move between the switch and the slider. On the slider, left/right change the temperature by 100K. |
+| `Enter` / `Space` | Toggle the light when the cursor is on the switch |
 | `t` | Toggle the light |
 | `r` | Resume the schedule |
-| `s` | Expand or collapse the schedule editor |
 | `Tab` / `Shift+Tab` | Switch to the next/previous bar panel |
 | `Esc` | Close the panel |
-
-The **Resume schedule** row only appears while an override is active.
 
 ### Panel sections
 
 - **Header**: warmth name (Day, Neutral, Evening, Night, Tungsten, Candle, Ember) with the current K, the status line, and the on/off switch.
-- **Slider and presets**: a slider painted in kelvin colors and Day / Evening / Night / Candle. Both hold until the next scheduled change (change that with the `hold` IPC call).
-- **Resume schedule**: only while something overrides the schedule.
-- **Schedule**: one summary line (mode, night window, temperatures). Click it, or press `s`, to edit the mode, the on/off times (fixed mode, or sun mode without a sunset), the night and late temperatures, and the fade length. The late-stage delay is IPC only (`setLateAfter`).
+- **Slider**: painted in kelvin colors. A change holds until the next scheduled change (change that with the `hold` IPC call), then the schedule takes over again. Middle click on the moon, or `r`, resumes it sooner.
+
+The schedule keeps running from the saved settings. Presets, the mode, the on/off times, the night and late temperatures, and the fade length are set over IPC.
 
 ## Settings
 
@@ -91,7 +88,7 @@ omarchy bar set vinicios.nightlight hideWhenOff true
 
 ### Schedule
 
-These fields are edited from the panel or over IPC and stored in `omanight.json`.
+These fields are edited over IPC and stored in `omanight.json`.
 
 | Field | Default | Notes |
 |---|---|---|

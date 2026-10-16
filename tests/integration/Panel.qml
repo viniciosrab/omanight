@@ -64,30 +64,32 @@ ShellRoot {
     { name: "middle click resumes the schedule and shows the moon again",
       run: function() { harness.widget.handlePress(Qt.MiddleButton) },
       until: function() { return harness.widget.nightActive && harness.widget.shown && harness.widget.implicitWidth > 0 && harness.screen() === 3400 } },
-    { name: "left click opens the panel under the icon with the schedule collapsed",
+    { name: "left click opens the panel under the icon with only the switch and the slider",
       run: function() { harness.widget.settings = {}; harness.widget.handlePress(Qt.LeftButton) },
       until: function() {
         var p = harness.panel
         return p && p.opened && p.service === harness.service && p.surface.centerOnBar === false
-          && !p.scheduleExpanded && JSON.stringify(p.sections) === JSON.stringify(["switch", "slider", "presets", "schedule"])
+          && JSON.stringify(p.sections) === JSON.stringify(["switch", "slider"])
       } },
-    { name: "activating the schedule row expands the editor",
+    { name: "panel keyboard: down to the slider, right warms by 100K as an override",
       run: function() {
         var p = harness.panel
         p.cursorActive = true
-        p.focusSection = "schedule"
-        p.activateCursor()
+        p.focusSection = "switch"
+        p.moveCursor(0, 1)
+        p.moveCursor(1, 0)
       },
-      until: function() { return harness.panel.scheduleExpanded && harness.panel.sections.indexOf("mode") !== -1 } },
-    { name: "panel keyboard: down to presets, right to Night... activates an override",
+      until: function() {
+        return harness.screen() === 3500 && harness.panel.overrideActive
+          && JSON.stringify(harness.panel.sections) === JSON.stringify(["switch", "slider"])
+      } },
+    { name: "panel keyboard: the switch turns the light off",
       run: function() {
         var p = harness.panel
-        p.cursorActive = true
-        p.focusSection = "presets"
-        p.selectedIndex = 3
+        p.moveCursor(0, -1)
         p.activateCursor()
       },
-      until: function() { return harness.screen() === 1900 && harness.panel.overrideActive && harness.panel.sections.indexOf("resume") !== -1 } },
+      until: function() { return !harness.service.enabled && harness.screen() === 6500 } },
     { name: "panel closes",
       run: function() { harness.panel.close() },
       until: function() { return !harness.panel.opened } }
